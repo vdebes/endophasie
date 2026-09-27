@@ -9,6 +9,7 @@ Exits on its own after DICTATE_IDLE_S seconds without a request
 """
 
 import os
+import signal
 import socket
 import sys
 
@@ -20,6 +21,10 @@ IDLE_S = int(os.environ.get("DICTATE_IDLE_S", "600"))
 
 
 def main() -> int:
+    # systemd stops the service with SIGTERM, which by default kills Python
+    # without running `finally`: the socket would stay behind, and clients
+    # would take it for a ready server. Turn SIGTERM into a clean exit.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     model = load_model()
     if os.path.exists(SOCK):
         os.unlink(SOCK)
