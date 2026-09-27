@@ -88,6 +88,27 @@ the commit that fixed it: `git log` tells the same story with diffs.
   simulation compared a new recording against the old one's reference (112% "difference").
   Copy the file aside before measuring.
 
+## Tried and rolled back: live mode (text pasted while speaking)
+
+Built and tested the same day, then reverted at the user's request (code kept in a local
+`git stash`, not in the history).
+
+- **Design** — `streamer.py` followed the growing WAV, cut it at speech pauses (Silero VAD,
+  300 ms), sent each chunk to the server with the text so far as `initial_prompt`, and pasted
+  it into the window that had focus at start (held back if focus moved).
+- **What worked** — 80 s of speech in 8 chunks, **final wait 67 ms** (vs ~6 s in one block).
+- **What killed it: ellipses.** Each chunk ends where the speaker paused, often mid-sentence.
+  Whisper, trained on subtitles, closes an unfinished sentence with "…". Every hesitation
+  became a cut, every cut a "…". In one-block mode it sees whole sentences and punctuates
+  them properly. The offline simulation had compared *words* only, not punctuation, so it
+  could not see this. Measure what the user will read.
+- **Word by word rejected before coding** — pasted text cannot be revised, while spoken
+  thought is full of restarts; freezing words early is the wrong trade-off.
+- **Also learned** — without the "⏳ Transcribing…" notification on stop, the user could no
+  longer tell whether the mic was open. Visible state matters as much as speed.
+- **Worth retrying** — cut only on *long* pauses (≥ 0.7–1 s), which are more likely sentence
+  ends; hypothesis, not measured.
+
 ## Measurements
 
 - Model load (cached): 2.8 s · transcription of 3 s of audio: 0.8 s
