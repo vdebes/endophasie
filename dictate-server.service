@@ -1,0 +1,12 @@
+[Unit]
+Description=dictate — Whisper transcription server (model kept in GPU memory)
+
+[Service]
+Type=exec
+ExecStart=%h/.local/bin/dictate --serve
+# Memory cap: a bug cannot fill the RAM and freeze the machine.
+MemoryMax=3G
+MemorySwapMax=0
+# No automatic restart: it exits on its own when idle, and dictate
+# starts it again on the next recording.
+Restart=no

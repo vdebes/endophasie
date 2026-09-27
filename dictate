@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # dictate — 100% local voice dictation.
-# 1st call: start recording. 2nd call: stop, transcribe, and type the
-# text into the active window. Bind it to a keyboard shortcut.
+# 1st call: start recording (and the server, which loads the model while
+# you speak). 2nd call: stop, transcribe, and type the text into the
+# active window. Bind it to a keyboard shortcut.
+# dictate --serve: run the transcription server (invoked by systemd).
 # DICTATE_DRYRUN=1: print the text to stdout instead of typing it (tests).
 set -euo pipefail
 
@@ -9,9 +11,25 @@ DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 RUN="${XDG_RUNTIME_DIR:-/tmp}/dictate"   # tmpfs: audio never touches the disk
 PID="$RUN/rec.pid"
 WAV="$RUN/rec.wav"
+SOCK="$RUN/server.sock"
+UNIT=dictate-server.service
 MIN_REC_MS=1000      # a "stop" less than 1 s after the start = key auto-repeat, ignored
 MEM_MAX=3G           # RAM cap for transcription (the model uses ~1.4 GB)
+SERVER_WAIT_S=20     # max wait for the server (cold first load included)
 mkdir -p "$RUN" && chmod 700 "$RUN"
+
+# CUDA libraries installed inside the venv (no system CUDA).
+cuda_libs() {
+  local sp
+  sp="$(echo "$DIR"/.venv/lib/python3*/site-packages)"
+  export LD_LIBRARY_PATH="$sp/nvidia/cublas/lib:$sp/nvidia/cudnn/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  export HF_HUB_OFFLINE=1                  # model already cached: no network call
+}
+
+if [[ "${1:-}" == "--serve" ]]; then
+  cuda_libs
+  exec "$DIR/.venv/bin/python" "$DIR/server.py"
+fi
 
 # One instance at a time: key auto-repeat can launch the script dozens
 # of times per second. Extra calls exit at once instead of each starting
@@ -20,6 +38,7 @@ exec 9>"$RUN/lock"
 flock -n 9 || exit 0
 
 notify() { command -v notify-send >/dev/null && notify-send -t 2000 -a dictate "Dictation" "$1" || true; }
+now_ms() { echo $(( $(date +%s%N) / 1000000 )); }
 
 # Type the text into the active window, depending on the display server.
 type_text() {
@@ -30,34 +49,43 @@ type_text() {
   esac
 }
 
-# CUDA libraries installed inside the venv (no system CUDA).
-cuda_libs() {
-  local sp
-  sp="$(echo "$DIR"/.venv/lib/python3*/site-packages)"
-  export LD_LIBRARY_PATH="$sp/nvidia/cublas/lib:$sp/nvidia/cudnn/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# Transcribe through the server (model already loaded); failing that,
+# load the model directly, under a memory cap (cgroup): even if something
+# goes wrong, only the transcription gets killed, not the machine.
+run_transcription() {
+  local waited=0
+  while [[ ! -S "$SOCK" ]] && (( waited < SERVER_WAIT_S * 10 )); do sleep 0.1; waited=$((waited + 1)); done
+  if [[ -S "$SOCK" ]]; then
+    "$DIR/.venv/bin/python" "$DIR/client.py" "$WAV"
+  else
+    echo "$(date +%T) server unavailable, falling back to direct load" >&2
+    cuda_libs
+    systemd-run --user --scope --quiet -p MemoryMax="$MEM_MAX" -p MemorySwapMax=0 \
+      "$DIR/.venv/bin/python" "$DIR/transcribe.py" "$WAV"
+  fi
 }
 
 if [[ -f "$PID" ]] && kill -0 "$(cat "$PID")" 2>/dev/null; then
   # --- Stop + transcribe ---
-  (( ($(date +%s%N) - $(date -r "$PID" +%s%N)) / 1000000 < MIN_REC_MS )) && exit 0
+  (( $(now_ms) - $(date -r "$PID" +%s%N) / 1000000 < MIN_REC_MS )) && exit 0
   kill -INT "$(cat "$PID")"                   # SIGINT: pw-record finalizes the WAV
   while kill -0 "$(cat "$PID")" 2>/dev/null; do sleep 0.05; done
   rm -f "$PID"
   notify "⏳ Transcribing…"
-  cuda_libs
-  export HF_HUB_OFFLINE=1                    # model already cached: no network call
-  # Memory cap (cgroup): even if something goes wrong, only the
-  # transcription gets killed instead of filling RAM and freezing the box.
-  text="$(systemd-run --user --scope --quiet -p MemoryMax="$MEM_MAX" -p MemorySwapMax=0 \
-            "$DIR/.venv/bin/python" "$DIR/transcribe.py" "$WAV" 2>>"$RUN/error.log")" || {
+  t0=$(now_ms)
+  text="$(run_transcription 2>>"$RUN/error.log")" || {
     notify "❌ Failed — see $RUN/error.log"; rm -f "$WAV"; exit 1; }
+  t1=$(now_ms)
   # Content-free diagnostics (privacy): counters only, never the text.
-  echo "$(date +%T) audio=$(( $(stat -c %s "$WAV") / 32000 ))s words=$(wc -w <<<"$text") chars=${#text}" >> "$RUN/stats.log"
+  stats="audio=$(( $(stat -c %s "$WAV") / 32000 ))s words=$(wc -w <<<"$text") chars=${#text} transcription=$((t1 - t0))ms"
   rm -f "$WAV"
   if [[ -n "$text" ]]; then type_text "$text"; else notify "🤷 Heard nothing"; fi
+  echo "$(date +%T) $stats typing=$(( $(now_ms) - t1 ))ms" >> "$RUN/stats.log"
 else
   # --- Start recording ---
   rm -f "$WAV"
+  # The server loads the model while you speak (no-op if already running).
+  systemctl --user start --no-block "$UNIT" 2>/dev/null || true
   # 9>&-: pw-record must not inherit the lock (it would hold it for the
   # whole recording and the stop call would be ignored).
   pw-record --rate 16000 --channels 1 --format s16 "$WAV" </dev/null >/dev/null 2>&1 9>&- &

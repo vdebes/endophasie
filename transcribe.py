@@ -15,30 +15,34 @@ import ctranslate2
 from faster_whisper import WhisperModel
 
 
-def main() -> int:
-    if len(sys.argv) != 2:
-        print(__doc__, file=sys.stderr)
-        return 2
-
+def load_model() -> WhisperModel:
     device = os.environ.get("DICTATE_DEVICE") or (
         "cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu"
     )
     default_model = "large-v3-turbo" if device == "cuda" else "small"
     model_name = os.environ.get("DICTATE_MODEL", default_model)
     compute_type = "float16" if device == "cuda" else "int8"
-    lang = os.environ.get("DICTATE_LANG", "fr")
+    return WhisperModel(model_name, device=device, compute_type=compute_type)
 
-    model = WhisperModel(model_name, device=device, compute_type=compute_type)
+
+def transcribe(model: WhisperModel, path: str) -> str:
+    lang = os.environ.get("DICTATE_LANG", "fr")
     segments, _ = model.transcribe(
-        sys.argv[1],
+        path,
         language=None if lang == "auto" else lang,
         # Drop silence before transcribing: without it, Whisper
         # "hallucinates" subtitles ("Sous-titrage ST' 501").
         vad_filter=True,
         beam_size=5,
     )
-    text = " ".join(s.text.strip() for s in segments).strip()
-    print(text)
+    return " ".join(s.text.strip() for s in segments).strip()
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        print(__doc__, file=sys.stderr)
+        return 2
+    print(transcribe(load_model(), sys.argv[1]))
     return 0
 
 
