@@ -27,10 +27,11 @@ dconf write "$BASE/$slot/name" "'dictate'"
 dconf write "$BASE/$slot/command" "'$CMD'"
 dconf write "$BASE/$slot/binding" "['$BINDING']"
 
-# Cinnamon only picks up entries listed in custom-list, and did not
-# reload one written straight into dconf after a reboot. Rewriting the
-# list, with the '__dummy__' first entry that cinnamon-settings itself
-# uses, makes it re-read the bindings.
+# Cinnamon (js/ui/keybindings.js) only (re)loads custom bindings on a
+# "changed::custom-list" signal: editing an entry's command or binding in
+# dconf is not picked up on its own. Emptying the list then writing it
+# back forces the reload. '__dummy__' is skipped by Cinnamon; it is kept
+# first only because that is the shape cinnamon-settings writes.
 entries="'__dummy__'"
 for s in "${list[@]}"; do [[ "$s" != __dummy__ ]] && entries+=", '$s'"; done
 gsettings set "$SCHEMA" custom-list "[]"
