@@ -9,6 +9,7 @@ Configuration through environment variables (or ~/.config/dictate/env):
                   to that list. Beware: a single forced language makes
                   Whisper *translate* speech in any other language into it.
   DICTATE_DEVICE  cuda | cpu (default: cuda if an NVIDIA GPU is visible)
+  DICTATE_BEAM    beam size (default: 1; 5 is ~30% slower, no better on tests)
 """
 
 import os
@@ -51,7 +52,7 @@ def transcribe(model: WhisperModel, path: str, lang: str | None = None) -> str:
         # Drop silence before transcribing: without it, Whisper
         # "hallucinates" subtitles ("Sous-titrage ST' 501").
         vad_filter=True,
-        beam_size=5,
+        beam_size=int(os.environ.get("DICTATE_BEAM", "1")),
     )
     return " ".join(s.text.strip() for s in segments).strip()
 
