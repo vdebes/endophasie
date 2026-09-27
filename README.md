@@ -2,6 +2,12 @@
 
 **100% local voice dictation for Linux. Whisper runs on your own GPU — your voice never leaves your machine.**
 
+> [!WARNING]
+> **endophasie is an experimental project**, built as a hands-on exercise and
+> tested on a single machine. It is meant to be read, learned from and hacked on.
+> **Looking for a mature, cross-platform, ready-to-use solution?** Use
+> [Kieirra/murmure](https://github.com/Kieirra/murmure) instead.
+
 *Endophasia* is the word for inner speech, the dialogue you hold in your
 own head. This tool lets you speak it out loud to your computer with no
 one else listening: no cloud, no account, no network call once the
@@ -105,10 +111,10 @@ the git history is meant to be read.
 
 ## Alternatives
 
-[Kieirra/murmure](https://github.com/Kieirra/murmure) is an established,
-cross-platform local speech-to-text tool with LLM post-processing. If you
-want something ready-made rather than a small, readable script to learn
-from and hack on, look there first.
+[Kieirra/murmure](https://github.com/Kieirra/murmure) is a mature,
+cross-platform local speech-to-text tool with LLM post-processing: the
+recommended choice for a turnkey setup. endophasie takes the other road:
+a small, readable, Linux-only experiment where every pitfall is documented.
 
 ## License
 
