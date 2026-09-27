@@ -26,7 +26,7 @@ type_text() {
   if [[ -n "${DICTATE_DRYRUN:-}" ]]; then printf '%s\n' "$1"; return; fi
   case "${XDG_SESSION_TYPE:-x11}" in
     wayland) wtype -- "$1" ;;
-    *)       xdotool type --clearmodifiers --delay 0 -- "$1" ;;
+    *)       xdotool type --clearmodifiers --delay 12 -- "$1" ;;   # 0 ms: apps drop characters
   esac
 }
 
@@ -51,6 +51,8 @@ if [[ -f "$PID" ]] && kill -0 "$(cat "$PID")" 2>/dev/null; then
   text="$(systemd-run --user --scope --quiet -p MemoryMax="$MEM_MAX" -p MemorySwapMax=0 \
             "$DIR/.venv/bin/python" "$DIR/transcribe.py" "$WAV" 2>>"$RUN/error.log")" || {
     notify "❌ Failed — see $RUN/error.log"; rm -f "$WAV"; exit 1; }
+  # Content-free diagnostics (privacy): counters only, never the text.
+  echo "$(date +%T) audio=$(( $(stat -c %s "$WAV") / 32000 ))s words=$(wc -w <<<"$text") chars=${#text}" >> "$RUN/stats.log"
   rm -f "$WAV"
   if [[ -n "$text" ]]; then type_text "$text"; else notify "🤷 Heard nothing"; fi
 else
