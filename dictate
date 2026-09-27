@@ -2,18 +2,28 @@
 # dictate — 100% local voice dictation.
 # 1st call: start recording. 2nd call: stop, transcribe, and type the
 # text into the active window. Bind it to a keyboard shortcut.
+# DICTATE_DRYRUN=1: print the text to stdout instead of typing it (tests).
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 RUN="${XDG_RUNTIME_DIR:-/tmp}/dictate"   # tmpfs: audio never touches the disk
 PID="$RUN/rec.pid"
 WAV="$RUN/rec.wav"
+MIN_REC_MS=1000      # a "stop" less than 1 s after the start = key auto-repeat, ignored
+MEM_MAX=3G           # RAM cap for transcription (the model uses ~1.4 GB)
 mkdir -p "$RUN" && chmod 700 "$RUN"
+
+# One instance at a time: key auto-repeat can launch the script dozens
+# of times per second. Extra calls exit at once instead of each starting
+# its own transcription.
+exec 9>"$RUN/lock"
+flock -n 9 || exit 0
 
 notify() { command -v notify-send >/dev/null && notify-send -t 2000 -a dictate "Dictation" "$1" || true; }
 
 # Type the text into the active window, depending on the display server.
 type_text() {
+  if [[ -n "${DICTATE_DRYRUN:-}" ]]; then printf '%s\n' "$1"; return; fi
   case "${XDG_SESSION_TYPE:-x11}" in
     wayland) wtype -- "$1" ;;
     *)       xdotool type --clearmodifiers --delay 0 -- "$1" ;;
@@ -29,20 +39,26 @@ cuda_libs() {
 
 if [[ -f "$PID" ]] && kill -0 "$(cat "$PID")" 2>/dev/null; then
   # --- Stop + transcribe ---
+  (( ($(date +%s%N) - $(date -r "$PID" +%s%N)) / 1000000 < MIN_REC_MS )) && exit 0
   kill -INT "$(cat "$PID")"                   # SIGINT: pw-record finalizes the WAV
   while kill -0 "$(cat "$PID")" 2>/dev/null; do sleep 0.05; done
   rm -f "$PID"
   notify "⏳ Transcribing…"
   cuda_libs
   export HF_HUB_OFFLINE=1                    # model already cached: no network call
-  text="$("$DIR/.venv/bin/python" "$DIR/transcribe.py" "$WAV" 2>>"$RUN/error.log")" || {
+  # Memory cap (cgroup): even if something goes wrong, only the
+  # transcription gets killed instead of filling RAM and freezing the box.
+  text="$(systemd-run --user --scope --quiet -p MemoryMax="$MEM_MAX" -p MemorySwapMax=0 \
+            "$DIR/.venv/bin/python" "$DIR/transcribe.py" "$WAV" 2>>"$RUN/error.log")" || {
     notify "❌ Failed — see $RUN/error.log"; rm -f "$WAV"; exit 1; }
   rm -f "$WAV"
-  [[ -n "$text" ]] && type_text "$text" || notify "🤷 Heard nothing"
+  if [[ -n "$text" ]]; then type_text "$text"; else notify "🤷 Heard nothing"; fi
 else
   # --- Start recording ---
   rm -f "$WAV"
-  pw-record --rate 16000 --channels 1 --format s16 "$WAV" </dev/null >/dev/null 2>&1 &
+  # 9>&-: pw-record must not inherit the lock (it would hold it for the
+  # whole recording and the stop call would be ignored).
+  pw-record --rate 16000 --channels 1 --format s16 "$WAV" </dev/null >/dev/null 2>&1 9>&- &
   echo $! > "$PID"
   notify "🎙️ Listening… (same shortcut to stop)"
 fi
