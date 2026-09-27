@@ -19,6 +19,11 @@ MEM_MAX=3G           # RAM cap for transcription (the model uses ~1.4 GB)
 SERVER_WAIT_S=20     # max wait for the server (cold first load included)
 mkdir -p "$RUN" && chmod 700 "$RUN"
 
+# Optional settings (DICTATE_LANG, DICTATE_MODEL...), shared with the
+# systemd service through EnvironmentFile=.
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/dictate/env"
+if [[ -f "$CONF" ]]; then set -a; . "$CONF"; set +a; fi
+
 # CUDA libraries installed inside the venv (no system CUDA).
 cuda_libs() {
   local sp

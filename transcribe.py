@@ -2,9 +2,10 @@
 
 Usage: transcribe.py <file.wav>
 The text goes to stdout; diagnostics go to stderr.
-Configuration through environment variables:
+Configuration through environment variables (or ~/.config/dictate/env):
   DICTATE_MODEL   Whisper model (default: large-v3-turbo on GPU, small on CPU)
-  DICTATE_LANG    forced language (default: fr; "auto" to detect)
+  DICTATE_LANG    language code, e.g. "fr" (default: auto-detect; forcing it
+                  is faster and more reliable on short clips)
   DICTATE_DEVICE  cuda | cpu (default: cuda if an NVIDIA GPU is visible)
 """
 
@@ -26,7 +27,7 @@ def load_model() -> WhisperModel:
 
 
 def transcribe(model: WhisperModel, path: str) -> str:
-    lang = os.environ.get("DICTATE_LANG", "fr")
+    lang = os.environ.get("DICTATE_LANG", "auto")
     segments, _ = model.transcribe(
         path,
         language=None if lang == "auto" else lang,

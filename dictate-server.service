@@ -4,6 +4,8 @@ Description=dictate — Whisper transcription server (model kept in GPU memory)
 [Service]
 Type=exec
 ExecStart=%h/.local/bin/dictate --serve
+# Optional settings, same file dictate reads (leading "-": may be absent).
+EnvironmentFile=-%h/.config/dictate/env
 # Memory cap: a bug cannot fill the RAM and freeze the machine.
 MemoryMax=3G
 MemorySwapMax=0
