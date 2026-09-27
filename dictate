@@ -3,6 +3,8 @@
 # 1st call: start recording (and the server, which loads the model while
 # you speak). 2nd call: stop, transcribe, and insert the text into the
 # active window. Bind it to a keyboard shortcut.
+# dictate <lang> (e.g. "dictate fr", "dictate en"): the language is fixed
+# when recording starts, overriding DICTATE_LANG; either shortcut stops it.
 # dictate --serve: run the transcription server (invoked by systemd).
 # DICTATE_DRYRUN=1: print the text to stdout instead of inserting it (tests).
 set -euo pipefail
@@ -12,6 +14,7 @@ RUN="${XDG_RUNTIME_DIR:-/tmp}/dictate"   # tmpfs: audio never touches the disk
 PID="$RUN/rec.pid"
 STOPPED="$RUN/last-stop"   # timestamp of the last stop (debounce)
 WAV="$RUN/rec.wav"
+LANGF="$RUN/rec.lang"      # language chosen at start, read at stop
 SOCK="$RUN/server.sock"
 UNIT=dictate-server.service
 MIN_REC_MS=1000      # a call less than 1 s after a start or a stop = key auto-repeat, ignored
@@ -36,6 +39,8 @@ if [[ "${1:-}" == "--serve" ]]; then
   cuda_libs
   exec "$DIR/.venv/bin/python" "$DIR/server.py"
 fi
+LANG_ARG="${1:-}"
+[[ -z "$LANG_ARG" || "$LANG_ARG" =~ ^[a-z]{2,3}$ ]] || { echo "usage: dictate [lang] | --serve" >&2; exit 2; }
 
 # One instance at a time: key auto-repeat can launch the script dozens
 # of times per second. Extra calls exit at once instead of each starting
@@ -87,12 +92,12 @@ run_transcription() {
   local waited=0
   while [[ ! -S "$SOCK" ]] && (( waited < SERVER_WAIT_S * 10 )); do sleep 0.1; waited=$((waited + 1)); done
   if [[ -S "$SOCK" ]]; then
-    "$DIR/.venv/bin/python" "$DIR/client.py" "$WAV"
+    "$DIR/.venv/bin/python" "$DIR/client.py" "$WAV" "$lang"
   else
     echo "$(date +%T) server unavailable, falling back to direct load" >&2
     cuda_libs
     systemd-run --user --scope --quiet -p MemoryMax="$MEM_MAX" -p MemorySwapMax=0 \
-      "$DIR/.venv/bin/python" "$DIR/transcribe.py" "$WAV"
+      "$DIR/.venv/bin/python" "$DIR/transcribe.py" "$WAV" ${lang:+"$lang"}
   fi
 }
 
@@ -103,6 +108,7 @@ if [[ -f "$PID" ]] && kill -0 "$(cat "$PID")" 2>/dev/null; then
   while kill -0 "$(cat "$PID")" 2>/dev/null; do sleep 0.05; done
   rm -f "$PID"
   touch "$STOPPED"
+  lang="$(cat "$LANGF" 2>/dev/null || true)"; rm -f "$LANGF"
   notify "⏳ Transcribing…"
   t0=$(now_ms)
   text="$(run_transcription 2>>"$RUN/error.log")" || {
@@ -119,11 +125,12 @@ else
   # the lock; without this guard, key repeat would start a new recording.
   [[ -f "$STOPPED" ]] && (( $(age_ms "$STOPPED") < MIN_REC_MS )) && exit 0
   rm -f "$WAV"
+  printf '%s' "$LANG_ARG" > "$LANGF"
   # The server loads the model while you speak (no-op if already running).
   systemctl --user start --no-block "$UNIT" 2>/dev/null || true
   # 9>&-: pw-record must not inherit the lock (it would hold it for the
   # whole recording and the stop call would be ignored).
   pw-record --rate 16000 --channels 1 --format s16 "$WAV" </dev/null >/dev/null 2>&1 9>&- &
   echo $! > "$PID"
-  notify "🎙️ Listening… (same shortcut to stop)"
+  notify "🎙️ Listening${LANG_ARG:+ [$LANG_ARG]}… (same shortcut to stop)"
 fi

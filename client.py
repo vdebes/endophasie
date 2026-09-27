@@ -1,7 +1,7 @@
 """Minimal client for the transcription server (standard library only:
 starts in a few ms, unlike transcribe.py which loads the model).
 
-Usage: client.py <file.wav>  → text on stdout; exit code 1 on error.
+Usage: client.py <file.wav> [lang]  → text on stdout; exit code 1 on error.
 """
 
 import os
@@ -23,7 +23,8 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
             if time.monotonic() > deadline:
                 raise
             time.sleep(0.1)
-    s.sendall((sys.argv[1] + "\n").encode())
+    lang = sys.argv[2] if len(sys.argv) > 2 else ""
+    s.sendall((sys.argv[1] + "\t" + lang + "\n").encode())
     data = b"".join(iter(lambda: s.recv(65536), b"")).decode()
 
 status, _, body = data.partition("\n")
