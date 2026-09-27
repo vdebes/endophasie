@@ -26,7 +26,8 @@ the commit that fixed it: `git log` tells the same story with diffs.
 3. GPU check: `uv run python -c "import ctranslate2; print(ctranslate2.get_cuda_device_count())"` → `1`
 4. First load of `large-v3-turbo`: 1.6 GB download into `~/.cache/huggingface/`, offline afterwards.
 5. `dictate` (toggle script) + `transcribe.py`, symlinked into `~/.local/bin/`.
-6. Cinnamon shortcut `Ctrl+Alt+D` through dconf (`scripts/cinnamon-shortcut.sh`).
+6. Cinnamon shortcut `Ctrl+Alt+D` through dconf (`scripts/cinnamon-shortcut.sh`), later replaced
+   by one shortcut per language (`Ctrl+Alt+F` French, `Ctrl+Alt+E` English).
    `Super+D` is already taken (show desktop).
 7. Resident server: `server.py` (Unix socket, mode 600) + `client.py` (stdlib only) +
    `dictate-server.service` (systemd user unit). Started by `dictate` **when recording starts**,
@@ -74,6 +75,19 @@ the commit that fixed it: `git log` tells the same story with diffs.
   the monitor loop), counted its own command line in `pgrep -f`, then passed while one of its
   checks said "0 instead of 1". A test that prints OK is not the same as a test that checks.
 
+- **Language: forcing it translates, detecting it hears the accent** — `DICTATE_LANG=fr`
+  turned English speech into French. Restricting auto-detection to `fr,en` did not help:
+  Whisper's language ID gave fr = 1.00 / en = 0.00 on English spoken with a French accent,
+  yet a one-word "Seriously?" came out in English. Fix: one shortcut per language
+  (`Ctrl+Alt+F` / `Ctrl+Alt+E`). *(commit "Pick the language per shortcut")*
+- **Stale socket after a restart** — SIGTERM killed the server without running its cleanup;
+  the leftover socket looked like a ready server while the new one was still loading →
+  ConnectionRefused. Fix: SIGTERM handler + client retry. *(commit "Fix stale socket")*
+- **Freeze your benchmark input** — a temporary option kept the last recording for
+  measurements; two new dictations during the benchmark silently replaced it, and one
+  simulation compared a new recording against the old one's reference (112% "difference").
+  Copy the file aside before measuring.
+
 ## Measurements
 
 - Model load (cached): 2.8 s · transcription of 3 s of audio: 0.8 s
@@ -90,8 +104,32 @@ Wait after the second key press (from `stats.log`: counters only, never the text
 User verdict: v1 and v2 "slower than typing"; v3 "YES! it's faster". Later, dictating this
 project's own chat messages: "works very well".
 
-Transcription time grows with audio length (0.5 s for 5 s, 0.9 s for 13 s), so long journal
-entries would still wait several seconds at the end. Next step: transcribe while speaking.
+Transcription time grows with audio length: 0.5 s for 5 s, 0.9 s for 13 s, **6.3 s for 161 s**.
+Long journal entries still wait several seconds at the end.
+
+### beam_size (157 s recording, read aloud)
+
+| beam | time | words |
+|---|---|---|
+| 5 | 6.15 s | 469 |
+| 1 | 4.58 s (−25%) | 467 |
+
+6 differences; against the source text beam 1 was right 3 times, wrong once. → default 1.
+
+### Transcribing while speaking (simulation)
+
+Replayed the recording as a live stream: cut at speech pauses, transcribe each chunk as soon
+as it ends, previous text passed as `initial_prompt`.
+
+| Recording | Wait today | Chunked (best setting) | Words differing from one-block |
+|---|---|---|---|
+| 157 s | 6.2 s | 1.6 s (pauses ≥ 0.5 s, chunks ≥ 5 s) | 3.4% |
+| 37 s | 1.8 s | 0.6 s (pauses ≥ 0.3 s, chunks ≤ 8 s) | 5.4% |
+
+The limit is the speaker, not the GPU: reading aloud leaves few pauses (3 in 37 s), so the
+last chunk stays long. A sliding window with "stable prefix" commits (what online services
+do) would make the wait constant, at the cost of complexity and continuous GPU use.
+Next: implement chunking, show each chunk as it lands, measure on real journal dictation.
 
 ## Privacy
 

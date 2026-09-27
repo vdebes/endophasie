@@ -14,14 +14,15 @@ one else listening: no cloud, no account, no network call once the
 model is downloaded.
 
 Press a shortcut, speak, press it again: the text appears in whatever
-window has focus (terminal, editor, browser, notes app).
+window has focus (terminal, editor, browser, notes app). One shortcut per
+language: `Ctrl+Alt+F` for French, `Ctrl+Alt+E` for English (see below why).
 
 ## How it works
 
 ```
-Ctrl+Alt+D ──► pw-record ──► $XDG_RUNTIME_DIR/dictate/rec.wav   (RAM only)
+Ctrl+Alt+F ──► pw-record ──► $XDG_RUNTIME_DIR/dictate/rec.wav   (RAM only)
    │               (while you speak, the server loads the model)
-Ctrl+Alt+D ──► client.py ──► server.py (faster-whisper, GPU) ──► text
+Ctrl+Alt+F ──► client.py ──► server.py (faster-whisper, GPU) ──► text
                                   └─► clipboard + Ctrl+V / Ctrl+Shift+V
 ```
 
@@ -58,19 +59,36 @@ ln -s "$PWD/dictate" ~/.local/bin/dictate
 mkdir -p ~/.config/systemd/user
 ln -s "$PWD/dictate-server.service" ~/.config/systemd/user/
 systemctl --user daemon-reload
-scripts/cinnamon-shortcut.sh              # Cinnamon: binds Ctrl+Alt+D
+scripts/cinnamon-shortcut.sh '<Primary><Alt>f' fr   # Cinnamon: French
+scripts/cinnamon-shortcut.sh '<Primary><Alt>e' en   # Cinnamon: English
 ```
 
-Other desktops: bind `~/.local/bin/dictate` to a shortcut in your
-desktop's keyboard settings.
+Other desktops: bind `~/.local/bin/dictate fr` (or any language code) to
+a shortcut in your desktop's keyboard settings.
 
 Optional settings in `~/.config/dictate/env`:
 
 ```sh
-DICTATE_LANG=fr               # recommended: faster and more reliable than auto-detect
+DICTATE_LANG=fr               # language when `dictate` gets no argument (default: auto)
+# DICTATE_LANG=fr,en          # detect, but only among these languages
+# DICTATE_BEAM=5              # default 1 (~25% faster, same quality in tests)
 # DICTATE_MODEL=large-v3-turbo
 # DICTATE_INSERT=type         # simulated typing instead of paste
 ```
+
+### Why one shortcut per language
+
+Two traps, learned the hard way:
+
+- **Forcing a language translates.** With `DICTATE_LANG=fr`, English
+  speech comes out as fluent French: Whisper outputs the forced language
+  whatever it hears.
+- **Detection hears your accent, not your words.** English spoken with a
+  French accent was detected as French with 100% confidence, so
+  auto-detection (even restricted to `fr,en`) translated it too, and not
+  even consistently.
+
+Choosing the language yourself at the start is the only reliable option.
 
 The first dictation downloads the model (~1.6 GB) into
 `~/.cache/huggingface/`. After that, everything runs offline
@@ -101,6 +119,15 @@ transcriptions at once. `tests/burst.sh` replays that scenario.
 | Wayland (`wtype`) | ⚠️ written, untested (paste not yet ported) |
 | CPU-only | ⚠️ written, untested |
 | AMD GPUs | ❌ not supported by CTranslate2 as far as I know; CPU fallback |
+
+## Next
+
+- **See the text while you speak.** Today the text arrives in one block
+  after you stop. For long, journal-style dictation that is the main
+  pain point, both for latency (6 s after 2.5 minutes of speech) and for
+  flow: you cannot see what you have said so far. Simulations on real
+  recordings show that transcribing chunk by chunk at speech pauses cuts
+  the final wait by 3 to 4×; showing each chunk as it lands is next.
 
 ## Lab notes
 
