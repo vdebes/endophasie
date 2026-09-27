@@ -10,10 +10,11 @@ set -euo pipefail
 DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 RUN="${XDG_RUNTIME_DIR:-/tmp}/dictate"   # tmpfs: audio never touches the disk
 PID="$RUN/rec.pid"
+STOPPED="$RUN/last-stop"   # timestamp of the last stop (debounce)
 WAV="$RUN/rec.wav"
 SOCK="$RUN/server.sock"
 UNIT=dictate-server.service
-MIN_REC_MS=1000      # a "stop" less than 1 s after the start = key auto-repeat, ignored
+MIN_REC_MS=1000      # a call less than 1 s after a start or a stop = key auto-repeat, ignored
 MEM_MAX=3G           # RAM cap for transcription (the model uses ~1.4 GB)
 SERVER_WAIT_S=20     # max wait for the server (cold first load included)
 mkdir -p "$RUN" && chmod 700 "$RUN"
@@ -39,6 +40,7 @@ flock -n 9 || exit 0
 
 notify() { command -v notify-send >/dev/null && notify-send -t 2000 -a dictate "Dictation" "$1" || true; }
 now_ms() { echo $(( $(date +%s%N) / 1000000 )); }
+age_ms() { echo $(( $(now_ms) - $(date -r "$1" +%s%N) / 1000000 )); }
 
 # Type the text into the active window, depending on the display server.
 type_text() {
@@ -67,10 +69,11 @@ run_transcription() {
 
 if [[ -f "$PID" ]] && kill -0 "$(cat "$PID")" 2>/dev/null; then
   # --- Stop + transcribe ---
-  (( $(now_ms) - $(date -r "$PID" +%s%N) / 1000000 < MIN_REC_MS )) && exit 0
+  (( $(age_ms "$PID") < MIN_REC_MS )) && exit 0
   kill -INT "$(cat "$PID")"                   # SIGINT: pw-record finalizes the WAV
   while kill -0 "$(cat "$PID")" 2>/dev/null; do sleep 0.05; done
   rm -f "$PID"
+  touch "$STOPPED"
   notify "⏳ Transcribing…"
   t0=$(now_ms)
   text="$(run_transcription 2>>"$RUN/error.log")" || {
@@ -83,6 +86,9 @@ if [[ -f "$PID" ]] && kill -0 "$(cat "$PID")" 2>/dev/null; then
   echo "$(date +%T) $stats typing=$(( $(now_ms) - t1 ))ms" >> "$RUN/stats.log"
 else
   # --- Start recording ---
+  # Stop key still held down: the (fast) transcription already released
+  # the lock; without this guard, key repeat would start a new recording.
+  [[ -f "$STOPPED" ]] && (( $(age_ms "$STOPPED") < MIN_REC_MS )) && exit 0
   rm -f "$WAV"
   # The server loads the model while you speak (no-op if already running).
   systemctl --user start --no-block "$UNIT" 2>/dev/null || true
