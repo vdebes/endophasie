@@ -34,6 +34,7 @@ if [[ -f "$PID" ]] && kill -0 "$(cat "$PID")" 2>/dev/null; then
   rm -f "$PID"
   notify "⏳ Transcribing…"
   cuda_libs
+  export HF_HUB_OFFLINE=1                    # model already cached: no network call
   text="$("$DIR/.venv/bin/python" "$DIR/transcribe.py" "$WAV" 2>>"$RUN/error.log")" || {
     notify "❌ Failed — see $RUN/error.log"; rm -f "$WAV"; exit 1; }
   rm -f "$WAV"
