@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # dictate — 100% local voice dictation.
 # 1st call: start recording (and the server, which loads the model while
-# you speak). 2nd call: stop, transcribe, and type the text into the
+# you speak). 2nd call: stop, transcribe, and insert the text into the
 # active window. Bind it to a keyboard shortcut.
 # dictate --serve: run the transcription server (invoked by systemd).
-# DICTATE_DRYRUN=1: print the text to stdout instead of typing it (tests).
+# DICTATE_DRYRUN=1: print the text to stdout instead of inserting it (tests).
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
@@ -42,13 +42,37 @@ notify() { command -v notify-send >/dev/null && notify-send -t 2000 -a dictate "
 now_ms() { echo $(( $(date +%s%N) / 1000000 )); }
 age_ms() { echo $(( $(now_ms) - $(date -r "$1" +%s%N) / 1000000 )); }
 
-# Type the text into the active window, depending on the display server.
-type_text() {
+# Insert the text into the active window, depending on the display server.
+# X11: paste through the clipboard (instant); simulated typing
+# (xdotool type, 12 ms/char) is still available with DICTATE_INSERT=type.
+insert_text() {
   if [[ -n "${DICTATE_DRYRUN:-}" ]]; then printf '%s\n' "$1"; return; fi
   case "${XDG_SESSION_TYPE:-x11}" in
-    wayland) wtype -- "$1" ;;
-    *)       xdotool type --clearmodifiers --delay 12 -- "$1" ;;   # 0 ms: apps drop characters
+    wayland) wtype -- "$1" ;;                                   # untested
+    *) if [[ "${DICTATE_INSERT:-paste}" == type ]]; then
+         xdotool type --clearmodifiers --delay 12 -- "$1"     # 0 ms: apps drop characters
+       else
+         paste_text "$1"
+       fi ;;
   esac
+}
+
+# Paste the text, then give the clipboard its previous content back
+# (text only: an image copied beforehand would be lost).
+paste_text() {
+  local cls key saved had=0
+  cls="$(xprop -id "$(xdotool getactivewindow)" WM_CLASS 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+  case "$cls" in
+    *terminator*|*terminal*|*kitty*|*alacritty*|*konsole*|*xterm*|*tilix*|*wezterm*|*ghostty*)
+         key=ctrl+shift+v ;;                                    # terminals
+    *)   key=ctrl+v ;;
+  esac
+  saved="$(xclip -o -selection clipboard 2>/dev/null)" && had=1
+  printf '%s' "$1" | xclip -selection clipboard 9>&-            # xclip stays in the background: without the lock
+  xdotool key --clearmodifiers "$key"
+  # Deferred, non-blocking restore: the app must read the clipboard
+  # first. 9>&-: this subprocess does not keep the lock.
+  if (( had )); then ( sleep 0.5; printf '%s' "$saved" | xclip -selection clipboard ) 9>&- & fi
 }
 
 # Transcribe through the server (model already loaded); failing that,
@@ -82,8 +106,8 @@ if [[ -f "$PID" ]] && kill -0 "$(cat "$PID")" 2>/dev/null; then
   # Content-free diagnostics (privacy): counters only, never the text.
   stats="audio=$(( $(stat -c %s "$WAV") / 32000 ))s words=$(wc -w <<<"$text") chars=${#text} transcription=$((t1 - t0))ms"
   rm -f "$WAV"
-  if [[ -n "$text" ]]; then type_text "$text"; else notify "🤷 Heard nothing"; fi
-  echo "$(date +%T) $stats typing=$(( $(now_ms) - t1 ))ms" >> "$RUN/stats.log"
+  if [[ -n "$text" ]]; then insert_text "$text"; else notify "🤷 Heard nothing"; fi
+  echo "$(date +%T) $stats insertion=$(( $(now_ms) - t1 ))ms" >> "$RUN/stats.log"
 else
   # --- Start recording ---
   # Stop key still held down: the (fast) transcription already released
