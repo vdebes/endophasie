@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# dictate — 100% local voice dictation.
+# 1st call: start recording. 2nd call: stop, transcribe, and type the
+# text into the active window. Bind it to a keyboard shortcut.
+set -euo pipefail
+
+DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+RUN="${XDG_RUNTIME_DIR:-/tmp}/dictate"   # tmpfs: audio never touches the disk
+PID="$RUN/rec.pid"
+WAV="$RUN/rec.wav"
+mkdir -p "$RUN" && chmod 700 "$RUN"
+
+notify() { command -v notify-send >/dev/null && notify-send -t 2000 -a dictate "Dictation" "$1" || true; }
+
+# Type the text into the active window, depending on the display server.
+type_text() {
+  case "${XDG_SESSION_TYPE:-x11}" in
+    wayland) wtype -- "$1" ;;
+    *)       xdotool type --clearmodifiers --delay 0 -- "$1" ;;
+  esac
+}
+
+# CUDA libraries installed inside the venv (no system CUDA).
+cuda_libs() {
+  local sp
+  sp="$(echo "$DIR"/.venv/lib/python3*/site-packages)"
+  export LD_LIBRARY_PATH="$sp/nvidia/cublas/lib:$sp/nvidia/cudnn/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+}
+
+if [[ -f "$PID" ]] && kill -0 "$(cat "$PID")" 2>/dev/null; then
+  # --- Stop + transcribe ---
+  kill -INT "$(cat "$PID")"                   # SIGINT: pw-record finalizes the WAV
+  while kill -0 "$(cat "$PID")" 2>/dev/null; do sleep 0.05; done
+  rm -f "$PID"
+  notify "⏳ Transcribing…"
+  cuda_libs
+  text="$("$DIR/.venv/bin/python" "$DIR/transcribe.py" "$WAV" 2>>"$RUN/error.log")" || {
+    notify "❌ Failed — see $RUN/error.log"; rm -f "$WAV"; exit 1; }
+  rm -f "$WAV"
+  [[ -n "$text" ]] && type_text "$text" || notify "🤷 Heard nothing"
+else
+  # --- Start recording ---
+  rm -f "$WAV"
+  pw-record --rate 16000 --channels 1 --format s16 "$WAV" </dev/null >/dev/null 2>&1 &
+  echo $! > "$PID"
+  notify "🎙️ Listening… (same shortcut to stop)"
+fi
