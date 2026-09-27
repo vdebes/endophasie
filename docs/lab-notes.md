@@ -1,0 +1,105 @@
+# Lab notes — building 100% local dictation in one session
+
+Raw logbook, in the order things actually happened (2026-09-27). Source
+material for a tutorial, not the tutorial itself. Each pitfall points to
+the commit that fixed it: `git log` tells the same story with diffs.
+
+## Test machine
+
+- Linux Mint 22.1, Cinnamon 6.4, **X11**, encrypted home directory (ecryptfs)
+- NVIDIA RTX 4060 Laptop, 8 GB VRAM, driver 580 (CUDA 13.0 on the driver side)
+- No system CUDA toolkit (`nvcc` absent), and none is needed
+- 30 GB RAM, **no swap** (this matters, see the freeze below)
+- Mic: HyperX SoloCast, PipeWire 1.0.5
+- Four keyboard layouts configured: fr azerty, fr lafayette, us, fr ergol
+
+## Steps
+
+1. The only `sudo` step: `sudo apt install xdotool` (xclip was already there).
+2. Isolated project:
+   ```sh
+   uv init --python 3.12
+   uv add faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12
+   ```
+   → `.venv/` = 2.6 GB (faster-whisper 1.2.1, CTranslate2 4.8.2, cuBLAS 12.9, cuDNN 9.26).
+   Python 3.12 rather than the latest, as GPU libraries often lag behind.
+3. GPU check: `uv run python -c "import ctranslate2; print(ctranslate2.get_cuda_device_count())"` → `1`
+4. First load of `large-v3-turbo`: 1.6 GB download into `~/.cache/huggingface/`, offline afterwards.
+5. `dictate` (toggle script) + `transcribe.py`, symlinked into `~/.local/bin/`.
+6. Cinnamon shortcut `Ctrl+Alt+D` through dconf (`scripts/cinnamon-shortcut.sh`).
+   `Super+D` is already taken (show desktop).
+7. Resident server: `server.py` (Unix socket, mode 600) + `client.py` (stdlib only) +
+   `dictate-server.service` (systemd user unit). Started by `dictate` **when recording starts**,
+   so the model loads while you speak; exits after 10 idle minutes (frees ~2 GB of VRAM).
+8. Insertion by paste (xclip + `Ctrl+V`, or `Ctrl+Shift+V` in a terminal), clipboard restored.
+9. Settings in `~/.config/dictate/env`, read by both the script and the systemd unit.
+
+## Pitfalls
+
+- **`libcublas.so.12 is not found`** — the NVIDIA wheels live in `.venv/`, where the
+  dynamic loader does not look. Fix: `LD_LIBRARY_PATH=<site-packages>/nvidia/{cublas,cudnn}/lib`,
+  set by `dictate`. *(commit "Add dictate")*
+- **Hallucination on silence** — 3 s of silence came back as "Sous-titrage ST' 501": Whisper
+  was trained largely on film subtitles. Fix: `vad_filter=True`. Verified: 3 s without speech → "".
+- **ydotool rejected** — it sends US-QWERTY keycodes, so text is scrambled on AZERTY/Ergo-L,
+  accents are unreliable, and it requires access to `/dev/uinput` (system-wide keystroke
+  injection). xdotool (X11) and wtype (Wayland) send characters, not keycodes.
+- **"No network call" was false at first** — loading a model by name makes huggingface_hub
+  check the Hub for a new revision on every load. Fix: `HF_HUB_OFFLINE=1`.
+  *(commit "Force HF_HUB_OFFLINE")*
+- **Machine freeze, hard reset needed** — key auto-repeat launched the script dozens of times
+  per second → 18 transcriptions at once × 1.4 GB ≈ 25 GB, no swap → OOM, frozen desktop.
+  Diagnosed from `journalctl -b -1 -k` (the OOM killer's task dump). Fixes: `flock` (one
+  instance), 1 s debounce, cgroup memory cap (`systemd-run -p MemoryMax=3G`, `MemoryMax=` in
+  the unit). Regression test: `tests/burst.sh`.
+  **Lesson: always cap the RAM of a local model launched from a keyboard shortcut.**
+  *(commit "Fix machine freeze")*
+- **Forked processes inherit file descriptors** — `pw-record` and later the `xclip` daemon
+  would have kept the lock held (`9>&-` removes it). Otherwise the next call is silently
+  ignored. Any process that outlives the script must be started without the lock fd.
+- **Silent shortcut after the reboot** — the binding had been written straight into dconf.
+  Cinnamon's source (`js/ui/keybindings.js`) shows it only re-reads custom bindings on a
+  `changed::custom-list` signal, so emptying and rewriting that list fixes it. `__dummy__`
+  is skipped by Cinnamon; it was a red herring. Same cause the second time, after renaming
+  the command. *(commits "Add Cinnamon shortcut script" and "Correct the shortcut fix")*
+- **`xdotool key` is not a reliable shortcut test** — a synthetic `ctrl+alt+d` stopped
+  firing the binding while real key presses worked every time. Test with your fingers.
+- **Only the first word typed** — `xdotool type --delay 0` is too fast; apps drop the rest.
+  Found with content-free counters in `stats.log` (17 words transcribed, 1 on screen).
+  12 ms (xdotool's default) fixes it… at 1.7 s for 135 characters, hence the paste later.
+- **A faster server re-opened the debounce hole** — transcription released the lock before
+  the stop key was released, so auto-repeat started a new recording. Hence the debounce after
+  a stop, too. Caught by `tests/burst.sh`. *(commit "Debounce after stop too")*
+- **Tests need testing** — the first burst test hung (`jobs -p` under zsh made `wait` block on
+  the monitor loop), counted its own command line in `pgrep -f`, then passed while one of its
+  checks said "0 instead of 1". A test that prints OK is not the same as a test that checks.
+
+## Measurements
+
+- Model load (cached): 2.8 s · transcription of 3 s of audio: 0.8 s
+- Server cold start: ~2.7 s · requests on a warm server: ~80 ms (silence) to ~0.9 s (13 s of speech)
+
+Wait after the second key press (from `stats.log`: counters only, never the text):
+
+| Version | Speech | Transcription | Insertion | Wait |
+|---|---|---|---|---|
+| v1 load every time, typing at 12 ms | 7 s | ~3 s | ~1.3 s | ~4.5 s |
+| v2 resident server, typing at 12 ms | 13 s | 0.91 s | 1.67 s | 2.6 s |
+| v3 resident server + paste | 5 s | 0.49 s | 0.11 s | **0.6 s** |
+
+User verdict: v1 and v2 "slower than typing"; v3 "YES! it's faster". Later, dictating this
+project's own chat messages: "works very well".
+
+Transcription time grows with audio length (0.5 s for 5 s, 0.9 s for 13 s), so long journal
+entries would still wait several seconds at the end. Next step: transcribe while speaking.
+
+## Privacy
+
+- Audio recorded to `$XDG_RUNTIME_DIR` (tmpfs, RAM, mode 700), deleted after transcription.
+- `HF_HUB_OFFLINE=1`: no network call after the initial model download.
+- Diagnostics log counters, never content.
+
+## Untested
+
+- Wayland / `wtype` (and paste on Wayland: `wl-copy`), CPU-only mode, AMD GPUs.
+- Restoring an image from the clipboard (lost: only text is restored).
