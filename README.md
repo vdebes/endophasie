@@ -70,8 +70,8 @@ with "…". A pause long enough to be deliberate usually ends a sentence.
 - [`uv`](https://docs.astral.sh/uv/)
 - An **NVIDIA GPU with its driver** (tested: 8 GB VRAM). No CUDA toolkit
   needed: cuBLAS/cuDNN are installed as Python wheels inside `.venv/`.
-  Without a GPU, it falls back to the CPU with the `small` model (slower,
-  untested).
+  Without a GPU, it falls back to the CPU with the `small` model: about
+  4× slower than the GPU (~3.5 s for 15 s of speech on 20 cores).
 - ~4.5 GB of disk: 2.6 GB for `.venv/`, 1.6 GB for the model.
 
 On Debian/Ubuntu/Mint: `sudo apt install xdotool xclip x11-utils`
@@ -147,7 +147,7 @@ transcriptions at once. `tests/burst.sh` replays that scenario.
 | Linux Mint 22.1, Cinnamon, X11, NVIDIA | ✅ daily use |
 | Pause mode (X11) | ✅ tested on real dictation (4 s and 5 s pauses) |
 | Wayland (`wtype`) | ⚠️ written, untested (paste not yet ported) |
-| CPU-only | ⚠️ written, untested |
+| CPU-only | ✅ tested, forced with `DICTATE_DEVICE=cpu` on the NVIDIA machine (~3.5 s for 15 s of speech) |
 | AMD GPUs | ❌ not supported by CTranslate2 as far as I know; CPU fallback |
 
 ## Next

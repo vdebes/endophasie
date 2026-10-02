@@ -131,6 +131,25 @@ after 15 s of continuous speech (that one also split sentences).
 - **Real dictation** — 5 s, then 4 s: hesitations did not cut, no "…" seen; final wait
   0.7–0.9 s on 11–41 s of speech. Kept at 4 s.
 
+## CPU mode (2026-10-02)
+
+The fallback for machines without an NVIDIA GPU (AMD included), never run until now. Forced
+with `DICTATE_DEVICE=cpu` on the test machine (20 cores), `small` model, int8, on a 15 s
+English speech clip.
+
+- **Works**: matches the GPU transcription of the same passage, apart from a comma and the
+  last word, cut off by the end of the clip.
+- **Warm server**: 3.3–3.9 s per request (vs ~0.9 s on the GPU for 13 s); load 2.5 s; ~740 MB
+  of RAM. One-shot `transcribe.py` (fallback path, model loaded each time): ~6 s.
+- **Found on the way: a fresh install cannot get its model.** `dictate` sets
+  `HF_HUB_OFFLINE=1`, so the first dictation fails with `LocalEntryNotFoundError` instead of
+  downloading, contrary to what the README said. It never showed here because
+  `large-v3-turbo` was downloaded before offline mode was forced. Same for `small`: the
+  first CPU run had to be done without `HF_HUB_OFFLINE`. To fix in the install script
+  (download the model once, explicitly).
+- **Still heavy on a CPU-only machine**: `uv sync` installs the CUDA wheels anyway (they are
+  plain dependencies), so 2.6 GB of `.venv/` for nothing.
+
 ## Measurements
 
 - Model load (cached): 2.8 s · transcription of 3 s of audio: 0.8 s
@@ -182,5 +201,6 @@ Next: implement chunking, show each chunk as it lands, measure on real journal d
 
 ## Untested
 
-- Wayland / `wtype` (and paste on Wayland: `wl-copy`), CPU-only mode, AMD GPUs.
+- Wayland / `wtype` (and paste on Wayland: `wl-copy`), AMD GPUs (CPU mode only tested on an
+  NVIDIA machine, forced), French on the CPU `small` model.
 - Restoring an image from the clipboard (lost: only text is restored).
