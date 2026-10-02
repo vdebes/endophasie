@@ -6,6 +6,48 @@ requires-python = ">=3.12"
 license = "AGPL-3.0-or-later"
 dependencies = [
     "faster-whisper>=1.2.1",
+]
+
+[dependency-groups]
+# CUDA libraries as wheels (no system toolkit needed), ~2.6 GB. Installed
+# by default; install.sh and the CI skip them with --no-group gpu when
+# there is no NVIDIA GPU.
+gpu = [
     "nvidia-cublas-cu12>=12.9.2.10",
     "nvidia-cudnn-cu12>=9.26.0.51",
 ]
+dev = [
+    "mypy>=1.18",
+    "pytest>=8.4",
+    "pytest-cov>=7.0",
+    "ruff>=0.13",
+    "shellcheck-py>=0.11",
+]
+
+[tool.uv]
+# A plain `uv sync` (or `uv run`) on the dev machine must not remove the
+# CUDA wheels: dictation would break.
+default-groups = ["gpu", "dev"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.mypy]
+files = ["*.py", "tests"]
+check_untyped_defs = true
+# faster-whisper and ctranslate2 ship no type information.
+[[tool.mypy.overrides]]
+module = ["faster_whisper.*", "ctranslate2"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*"]
+# Paths stored relative to the repository: needed by the CI coverage badge.
+relative_files = true

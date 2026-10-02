@@ -32,6 +32,7 @@ import subprocess
 import sys
 import time
 import wave
+from typing import BinaryIO
 
 import numpy as np
 from faster_whisper.vad import VadOptions, get_speech_timestamps
@@ -95,7 +96,8 @@ class WavTail:
     written (the header's size fields are not final yet, so they are ignored)."""
 
     def __init__(self, path: str):
-        self.path, self.f, self.rest = path, None, b""
+        self.path, self.rest = path, b""
+        self.f: BinaryIO | None = None
 
     def read(self) -> np.ndarray:
         if self.f is None:
@@ -207,7 +209,9 @@ def main() -> int:
     def emit(chunk: np.ndarray) -> None:
         nonlocal words, chunks, context
         with wave.open(CHUNK_WAV, "wb") as w:
-            w.setnchannels(1), w.setsampwidth(2), w.setframerate(SR)
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(SR)
             w.writeframes((np.clip(chunk, -1, 1) * 32767).astype(np.int16).tobytes())
         try:
             text = request(CHUNK_WAV, lang, context[-300:]).strip()
@@ -264,9 +268,9 @@ def main() -> int:
         os.unlink(CHUNK_WAV)
     wait_ms = int((time.monotonic() - t_stop) * 1000)
     with open(os.path.join(RUN, "stats.log"), "a") as f:
+        closed_by = "streamer" if self_closed else "key"
         print(f"{time.strftime('%T')} pause={PAUSE_S:g}s audio={audio_s:.0f}s chunks={chunks} "
-              f"words={words} final_wait={wait_ms}ms closed_by={'streamer' if self_closed else 'key'}",
-              file=f)
+              f"words={words} final_wait={wait_ms}ms closed_by={closed_by}", file=f)
     if not complete:
         notify("📋 Focus changed: text left in the clipboard", 4000)
     elif self_closed:

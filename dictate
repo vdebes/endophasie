@@ -28,6 +28,7 @@ mkdir -p "$RUN" && chmod 700 "$RUN"
 # Optional settings (DICTATE_LANG, DICTATE_MODEL...), shared with the
 # systemd service through EnvironmentFile=.
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/dictate/env"
+# shellcheck source=/dev/null
 if [[ -f "$CONF" ]]; then set -a; . "$CONF"; set +a; fi
 
 # CUDA libraries installed inside the venv (no system CUDA).

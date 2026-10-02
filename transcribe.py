@@ -32,14 +32,14 @@ def load_model() -> WhisperModel:
 def pick_language(model: WhisperModel, audio, setting: str) -> str | None:
     """None lets Whisper detect freely; a list restricts detection to it,
     so a two-word clip cannot come out as Dutch for a French speaker."""
-    langs = [l.strip() for l in setting.split(",") if l.strip()]
+    langs = [code.strip() for code in setting.split(",") if code.strip()]
     if setting == "auto" or not langs:
         return None
     if len(langs) == 1:
         return langs[0]
     _, _, probs = model.detect_language(audio, vad_filter=True)
     scores = dict(probs)
-    return max(langs, key=lambda l: scores.get(l, 0.0))
+    return max(langs, key=lambda code: scores.get(code, 0.0))
 
 
 def transcribe(model: WhisperModel, path: str, lang: str | None = None,

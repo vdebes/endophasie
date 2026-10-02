@@ -149,8 +149,10 @@ English speech clip.
   downloads the model once, explicitly (`faster_whisper.download_model`). Checked with a
   fresh `HOME` and a failing `nvidia-smi` stub: CPU mode installed, `small` downloaded,
   offline transcription works on the first try.
-- **Still heavy on a CPU-only machine**: `uv sync` installs the CUDA wheels anyway (they are
-  plain dependencies), so 2.6 GB of `.venv/` for nothing.
+- **Still heavy on a CPU-only machine**: `uv sync` installed the CUDA wheels anyway (plain
+  dependencies), 2.6 GB of `.venv/` for nothing. Fixed with the CI: they moved to a `gpu`
+  dependency group, default for a plain `uv sync` (so the dev machine keeps them), skipped
+  by `install.sh` without an NVIDIA GPU and by the CI (`--no-group gpu`): ~0.5 GB instead.
 
 ## Measurements
 

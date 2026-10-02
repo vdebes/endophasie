@@ -4,7 +4,7 @@
 # frozen). Simulates a held-down key, on start and then on stop, and
 # checks there is never more than one transcription at a time.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 export DICTATE_DRYRUN=1
 RUN="${XDG_RUNTIME_DIR:-/tmp}/dictate"
 
@@ -36,4 +36,8 @@ echo "   leftover pw-record: $(pgrep -xc pw-record) (expected: 0)"
 left=$(count_streamers)
 echo "   leftover streamers: $left (expected: 0)"
 
-(( rec == 1 && str <= 1 && left == 0 && max <= 1 )) && ! pgrep -x pw-record >/dev/null && echo "OK" || { echo "FAIL"; exit 1; }
+if (( rec == 1 && str <= 1 && left == 0 && max <= 1 )) && ! pgrep -x pw-record >/dev/null; then
+  echo "OK"
+else
+  echo "FAIL"; exit 1
+fi

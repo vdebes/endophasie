@@ -21,6 +21,13 @@ SOCK = os.path.join(RUN, "server.sock")
 IDLE_S = int(os.environ.get("DICTATE_IDLE_S", "600"))
 
 
+def parse_request(line: str) -> tuple[str, str, str]:
+    """"<wav path>\t<lang>\t<prompt>\n" → (path, lang, prompt); missing
+    fields are empty (older clients send only the path, or path and lang)."""
+    path, lang, prompt = (line.rstrip("\n").split("\t") + ["", ""])[:3]
+    return path, lang, prompt
+
+
 def main() -> int:
     # systemd stops the service with SIGTERM, which by default kills Python
     # without running `finally`: the socket would stay behind, and clients
@@ -40,10 +47,10 @@ def main() -> int:
         while True:
             try:
                 conn, _ = srv.accept()
-            except socket.timeout:
+            except TimeoutError:
                 break
             with conn:
-                path, lang, prompt = (conn.makefile().readline().rstrip("\n").split("\t") + ["", ""])[:3]
+                path, lang, prompt = parse_request(conn.makefile().readline())
                 try:
                     reply = "OK\n" + transcribe(model, path, lang or None, prompt or None)
                 except Exception as e:  # the server survives an unreadable file

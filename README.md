@@ -1,5 +1,8 @@
 # endophasie
 
+[![CI](https://github.com/vdebes/endophasie/actions/workflows/ci.yml/badge.svg)](https://github.com/vdebes/endophasie/actions/workflows/ci.yml)
+[![Coverage](https://raw.githubusercontent.com/vdebes/endophasie/python-coverage-comment-action-data/badge.svg)](https://github.com/vdebes/endophasie/tree/python-coverage-comment-action-data)
+
 **100% local voice dictation for Linux. Whisper runs on your own GPU — your voice never leaves your machine.**
 
 > [!WARNING]
@@ -73,8 +76,8 @@ with "…". A pause long enough to be deliberate usually ends a sentence.
   needed: cuBLAS/cuDNN are installed as Python wheels inside `.venv/`.
   Without a GPU, it falls back to the CPU with the `small` model: about
   4× slower than the GPU (~3.5 s for 15 s of speech on 20 cores).
-- ~4.5 GB of disk: 2.6 GB for `.venv/` (CUDA libraries included, even
-  without an NVIDIA GPU), 1.6 GB for the model (0.5 GB for `small`).
+- ~4.5 GB of disk with a GPU: 2.6 GB for `.venv/`, 1.6 GB for the model.
+  Without one: ~0.5 GB for `.venv/` (no CUDA libraries), 0.5 GB for `small`.
 
 ## Install
 
@@ -166,6 +169,30 @@ transcriptions at once. `tests/burst.sh` replays that scenario.
   The headset mic switches to its lower-quality "call" profile, must be
   the default source for `pw-record`, and a locked screen leaves no
   window to paste into.
+
+## Development
+
+```sh
+uv sync                     # dev tools included (CUDA too: default groups)
+uv run ruff check .         # lint
+uv run mypy                 # types
+uv run shellcheck dictate install.sh scripts/*.sh tests/*.sh
+uv run pytest --cov         # unit tests + coverage
+tests/burst.sh              # key auto-repeat regression (real mic, nothing pasted)
+```
+
+The CI (GitHub Actions, `.github/workflows/ci.yml`) runs the first four
+on every push, without a GPU (`--no-group gpu`). Unit tests cover what
+runs without a mic, a GPU or a display: the server protocol, language
+selection, reading a WAV still being written, holding text back while
+focus is elsewhere, closing the mic. The recording loops and the
+transcription itself are tested by hand (see the lab notes): hence the
+modest coverage figure. The badge is generated in the CI and stored on
+the `python-coverage-comment-action-data` branch, without any external
+coverage service.
+
+Not enforced: `ruff format`. It would undo the aligned end-of-line
+comments the code relies on for readability.
 
 ## Lab notes
 
