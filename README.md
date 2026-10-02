@@ -123,11 +123,13 @@ transcriptions at once. `tests/burst.sh` replays that scenario.
 ## Next
 
 - **See the text while you speak.** Today the text arrives in one block
-  after you stop. For long, journal-style dictation that is the main
-  pain point, both for latency (6 s after 2.5 minutes of speech) and for
-  flow: you cannot see what you have said so far. Simulations on real
-  recordings show that transcribing chunk by chunk at speech pauses cuts
-  the final wait by 3 to 4×; showing each chunk as it lands is next.
+  after you stop: ~6 s of wait after 2.5 minutes of speech, and you cannot
+  see what you have said so far. A live mode was built and rolled back
+  (2026-09-27): cutting at every speech pause brought the final wait down
+  to 67 ms, but Whisper closed each mid-sentence chunk with "…", so the
+  text read worse than in one block. Worth retrying: cut only on long
+  pauses (≥ 0.7–1 s), more likely to be sentence ends. Details in
+  [`docs/lab-notes.md`](docs/lab-notes.md#tried-and-rolled-back-live-mode-text-pasted-while-speaking).
 
 ## Lab notes
 
