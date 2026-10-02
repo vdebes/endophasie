@@ -1,6 +1,6 @@
 [project]
 name = "endophasie"
-version = "0.1.0"
+version = "1.0.0"
 description = "100% local voice dictation for Linux. Whisper runs on your own GPU — your voice never leaves your machine."
 requires-python = ">=3.12"
 license = "AGPL-3.0-or-later"
