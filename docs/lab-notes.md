@@ -145,8 +145,10 @@ English speech clip.
   `HF_HUB_OFFLINE=1`, so the first dictation fails with `LocalEntryNotFoundError` instead of
   downloading, contrary to what the README said. It never showed here because
   `large-v3-turbo` was downloaded before offline mode was forced. Same for `small`: the
-  first CPU run had to be done without `HF_HUB_OFFLINE`. To fix in the install script
-  (download the model once, explicitly).
+  first CPU run had to be done without `HF_HUB_OFFLINE`. Fixed by `install.sh`, which
+  downloads the model once, explicitly (`faster_whisper.download_model`). Checked with a
+  fresh `HOME` and a failing `nvidia-smi` stub: CPU mode installed, `small` downloaded,
+  offline transcription works on the first try.
 - **Still heavy on a CPU-only machine**: `uv sync` installs the CUDA wheels anyway (they are
   plain dependencies), so 2.6 GB of `.venv/` for nothing.
 

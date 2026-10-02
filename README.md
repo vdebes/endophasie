@@ -66,31 +66,42 @@ with "…". A pause long enough to be deliberate usually ends a sentence.
 ## Requirements
 
 - Linux with an **X11** session and **PipeWire** (`pw-record`)
-- `xdotool`, `xclip`, `xprop`; `notify-send` (optional)
+- `xdotool`, `xclip`, `xprop`, `notify-send` (the installer offers to
+  install the missing ones with apt)
 - [`uv`](https://docs.astral.sh/uv/)
 - An **NVIDIA GPU with its driver** (tested: 8 GB VRAM). No CUDA toolkit
   needed: cuBLAS/cuDNN are installed as Python wheels inside `.venv/`.
   Without a GPU, it falls back to the CPU with the `small` model: about
   4× slower than the GPU (~3.5 s for 15 s of speech on 20 cores).
-- ~4.5 GB of disk: 2.6 GB for `.venv/`, 1.6 GB for the model.
-
-On Debian/Ubuntu/Mint: `sudo apt install xdotool xclip x11-utils`
+- ~4.5 GB of disk: 2.6 GB for `.venv/` (CUDA libraries included, even
+  without an NVIDIA GPU), 1.6 GB for the model (0.5 GB for `small`).
 
 ## Install
 
 ```sh
 git clone https://github.com/vdebes/endophasie.git && cd endophasie
-uv sync                                   # creates .venv/ (downloads ~2.6 GB)
-ln -s "$PWD/dictate" ~/.local/bin/dictate
-mkdir -p ~/.config/systemd/user
-ln -s "$PWD/dictate-server.service" ~/.config/systemd/user/
-systemctl --user daemon-reload
-scripts/cinnamon-shortcut.sh '<Primary><Alt>f' fr   # Cinnamon: French
-scripts/cinnamon-shortcut.sh '<Primary><Alt>e' en   # Cinnamon: English
+./install.sh
 ```
 
-Other desktops: bind `~/.local/bin/dictate fr` (or any language code) to
-a shortcut in your desktop's keyboard settings.
+The script checks the system, then, for the current user only:
+
+1. **Refuses a Wayland session** (pasting is not ported: dictation would
+   silently do nothing). Log in with X11 ("Xorg") instead.
+2. Offers to install missing system packages (`sudo apt install`: the
+   only step that asks for root); asks you to install `uv` if missing.
+3. Detects an NVIDIA GPU; without one, installs the CPU mode and says so.
+4. Creates `.venv/` (`uv sync`) and `~/.config/dictate/env` (all
+   settings commented out; an existing file is kept).
+5. **Downloads the Whisper model once.** Dictation itself runs offline
+   (`HF_HUB_OFFLINE=1`), so without this step the first dictation would
+   fail instead of downloading it.
+6. Links `~/.local/bin/dictate` and the systemd user service.
+7. Cinnamon: binds `Ctrl+Alt+F` (French) and `Ctrl+Alt+E` (English).
+   Other desktops: it prints the commands to bind yourself
+   (`~/.local/bin/dictate fr`, or any language code).
+
+Running it again is safe: it updates links, shortcuts and the model
+instead of duplicating them, and keeps your settings.
 
 Optional settings in `~/.config/dictate/env`:
 
@@ -119,9 +130,8 @@ Two traps, learned the hard way:
 
 Choosing the language yourself at the start is the only reliable option.
 
-The first dictation downloads the model (~1.6 GB) into
-`~/.cache/huggingface/`. After that, everything runs offline
-(`HF_HUB_OFFLINE=1` is enforced).
+The model lives in `~/.cache/huggingface/`, downloaded by the installer.
+After that, everything runs offline (`HF_HUB_OFFLINE=1` is enforced).
 
 ## Privacy
 
@@ -146,7 +156,7 @@ transcriptions at once. `tests/burst.sh` replays that scenario.
 |---|---|
 | Linux Mint 22.1, Cinnamon, X11, NVIDIA | ✅ daily use |
 | Pause mode (X11) | ✅ tested on real dictation (4 s and 5 s pauses) |
-| Wayland (`wtype`) | ⚠️ written, untested (paste not yet ported) |
+| Wayland (`wtype`) | ❌ refused by the installer: typing written but untested, paste not ported |
 | CPU-only | ✅ tested, forced with `DICTATE_DEVICE=cpu` on the NVIDIA machine (~3.5 s for 15 s of speech) |
 | AMD GPUs | ❌ not supported by CTranslate2 as far as I know; CPU fallback |
 
