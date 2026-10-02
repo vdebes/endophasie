@@ -2,8 +2,8 @@
 
 Listens on a Unix socket ($XDG_RUNTIME_DIR/dictate/server.sock, mode 600).
 The socket only appears once the model is loaded: its existence means "ready".
-Protocol: the client sends a WAV file path, optionally a tab and a
-language code, then "\n"; the server replies
+Protocol: the client sends "<wav path>\t<lang>\t<prompt>\n" (lang and
+prompt may be empty or omitted); the server replies
 "OK\n<text>" or "ERR\n<message>", then closes the connection.
 Exits on its own after DICTATE_IDLE_S seconds without a request
 (default: 600), to give the GPU memory back.
@@ -43,9 +43,9 @@ def main() -> int:
             except socket.timeout:
                 break
             with conn:
-                path, _, lang = conn.makefile().readline().strip().partition("\t")
+                path, lang, prompt = (conn.makefile().readline().rstrip("\n").split("\t") + ["", ""])[:3]
                 try:
-                    reply = "OK\n" + transcribe(model, path, lang or None)
+                    reply = "OK\n" + transcribe(model, path, lang or None, prompt or None)
                 except Exception as e:  # the server survives an unreadable file
                     reply = f"ERR\n{e}"
                 conn.sendall(reply.encode())

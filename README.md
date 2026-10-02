@@ -33,9 +33,35 @@ Ctrl+Alt+F ──► client.py ──► server.py (faster-whisper, GPU) ──�
 - **`client.py`** — standard library only, starts in milliseconds.
 - **`transcribe.py`** — the actual transcription; also used as a fallback
   when the server is unavailable.
+- **`streamer.py`** — pause mode (optional, below): follows the recording
+  and pastes what you said each time you pause long enough.
 
 Typical wait after the second key press: **~0.6 s** for a short sentence
 (0.5 s transcription + 0.1 s paste, RTX 4060 Laptop).
+
+### Pause mode: see your text without stopping
+
+By default the text arrives in one block when you press the shortcut
+again. With `DICTATE_PAUSE=4`, a silence of 4 seconds pastes what you
+have said so far, and you keep talking. Shorter pauses (hesitations,
+looking for a word) do not cut anything. Each piece is transcribed with
+the text before it as context, so style and punctuation carry over.
+
+- **The text stays where you started.** If you switch to another window,
+  it is held back and pasted when you come back, never into the browser
+  or the mail client you switched to. If the dictation ends first, it is
+  left in the clipboard (with a notification).
+- **Away from the keyboard** (`DICTATE_AFTER_PAUSE=continue`, the
+  default): the mic stays open after each paste, e.g. with a headset
+  across the room, and closes on its own after `DICTATE_MIC_IDLE`
+  seconds without speech (default: 30).
+- **At the keyboard** (`DICTATE_AFTER_PAUSE=stop`): the mic closes after
+  the first paste, so typing noise cannot be transcribed afterwards.
+- The shortcut stops it at any time, in both modes.
+
+Why 4 seconds and not less: cutting at every short pause (300 ms) was
+tried first and rolled back, because Whisper closed each half-sentence
+with "…". A pause long enough to be deliberate usually ends a sentence.
 
 ## Requirements
 
@@ -74,6 +100,9 @@ DICTATE_LANG=fr               # language when `dictate` gets no argument (defaul
 # DICTATE_BEAM=5              # default 1 (~25% faster, same quality in tests)
 # DICTATE_MODEL=large-v3-turbo
 # DICTATE_INSERT=type         # simulated typing instead of paste
+# DICTATE_PAUSE=4             # pause mode: paste after 4 s of silence (default 0: off)
+# DICTATE_AFTER_PAUSE=continue  # or stop: close the mic after the first paste
+# DICTATE_MIC_IDLE=30         # continue mode: close the mic after 30 s without speech
 ```
 
 ### Why one shortcut per language
@@ -116,20 +145,17 @@ transcriptions at once. `tests/burst.sh` replays that scenario.
 | | |
 |---|---|
 | Linux Mint 22.1, Cinnamon, X11, NVIDIA | ✅ daily use |
+| Pause mode (X11) | ✅ tested on real dictation (4 s and 5 s pauses) |
 | Wayland (`wtype`) | ⚠️ written, untested (paste not yet ported) |
 | CPU-only | ⚠️ written, untested |
 | AMD GPUs | ❌ not supported by CTranslate2 as far as I know; CPU fallback |
 
 ## Next
 
-- **See the text while you speak.** Today the text arrives in one block
-  after you stop: ~6 s of wait after 2.5 minutes of speech, and you cannot
-  see what you have said so far. A live mode was built and rolled back
-  (2026-09-27): cutting at every speech pause brought the final wait down
-  to 67 ms, but Whisper closed each mid-sentence chunk with "…", so the
-  text read worse than in one block. Worth retrying: cut only on long
-  pauses (≥ 0.7–1 s), more likely to be sentence ends. Details in
-  [`docs/lab-notes.md`](docs/lab-notes.md#tried-and-rolled-back-live-mode-text-pasted-while-speaking).
+- **Pause mode with a Bluetooth headset**, away from the PC: untested.
+  The headset mic switches to its lower-quality "call" profile, must be
+  the default source for `pw-record`, and a locked screen leaves no
+  window to paste into.
 
 ## Lab notes
 

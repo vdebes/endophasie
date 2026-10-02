@@ -109,6 +109,28 @@ Built and tested the same day, then reverted at the user's request (code kept in
 - **Worth retrying** — cut only on *long* pauses (≥ 0.7–1 s), which are more likely sentence
   ends; hypothesis, not measured.
 
+## Pause mode (2026-10-02): the retry that worked
+
+The live-mode code, taken back from the stash, with one change of principle: cut only on
+a **deliberate** pause (`DICTATE_PAUSE`, seconds), never on hesitations, and no forced cut
+after 15 s of continuous speech (that one also split sentences).
+
+- **Two uses, one setting** — `DICTATE_AFTER_PAUSE=continue` keeps the mic open (headset,
+  away from the keyboard) with a safety close after `DICTATE_MIC_IDLE` s without speech;
+  `stop` closes it after the first paste (at the keyboard: typing noise is not transcribed).
+- **VAD on the tail only** — the buffer can hold minutes of speech between two long pauses;
+  Silero runs on the last `PAUSE + 2` s at each poll, the whole buffer only after the loop
+  was busy transcribing. 0.3 s kept after the last word: long trailing silences invite
+  hallucinations.
+- **When the streamer closes the mic itself**, it also removes `rec.pid`: a stale pid could
+  be reused by an unrelated process, which the next shortcut would then SIGINT. It deletes
+  the WAV only if it is still the file it read (same inode), not a new recording.
+- **Testing without a mic** — a fake `pw-record` replaying a speech file with scripted
+  silences, in a separate `XDG_RUNTIME_DIR` (socket symlinked). First run "failed": the
+  excerpt had a real 6 s gap of its own. Map the test audio with the VAD first.
+- **Real dictation** — 5 s, then 4 s: hesitations did not cut, no "…" seen; final wait
+  0.7–0.9 s on 11–41 s of speech. Kept at 4 s.
+
 ## Measurements
 
 - Model load (cached): 2.8 s · transcription of 3 s of audio: 0.8 s

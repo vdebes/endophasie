@@ -7,6 +7,8 @@
 # when recording starts, overriding DICTATE_LANG; either shortcut stops it.
 # dictate --serve: run the transcription server (invoked by systemd).
 # DICTATE_DRYRUN=1: print the text to stdout instead of inserting it (tests).
+# Pause mode (X11, off by default): with DICTATE_PAUSE=5, the text said so
+# far is pasted after each 5 s of silence (see streamer.py for the settings).
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
@@ -15,6 +17,7 @@ PID="$RUN/rec.pid"
 STOPPED="$RUN/last-stop"   # timestamp of the last stop (debounce)
 WAV="$RUN/rec.wav"
 LANGF="$RUN/rec.lang"      # language chosen at start, read at stop
+STREAM="$RUN/stream.pid"   # pause mode: streamer.py, started with the recording
 SOCK="$RUN/server.sock"
 UNIT=dictate-server.service
 MIN_REC_MS=1000      # a call less than 1 s after a start or a stop = key auto-repeat, ignored
@@ -48,7 +51,17 @@ LANG_ARG="${1:-}"
 exec 9>"$RUN/lock"
 flock -n 9 || exit 0
 
-notify() { command -v notify-send >/dev/null && notify-send -t 2000 -a dictate "Dictation" "$1" || true; }
+# All messages reuse one notification (replace-id): the "recording" one
+# stays on screen for the whole recording, so you always know whether the
+# mic is open, and the next message replaces it instead of piling up.
+NOTIF="$RUN/notify.id"
+notify() {   # notify <message> [timeout ms, 0 = stays until replaced]
+  command -v notify-send >/dev/null || return 0
+  local t="${2:-2000}" id=() urg=normal
+  [[ -s "$NOTIF" ]] && id=(-r "$(cat "$NOTIF")")
+  (( t == 0 )) && urg=critical          # Cinnamon only keeps critical ones up
+  notify-send -p -u "$urg" -t "$t" "${id[@]}" -a dictate "Dictation" "$1" > "$NOTIF" 2>/dev/null || true
+}
 now_ms() { echo $(( $(date +%s%N) / 1000000 )); }
 age_ms() { echo $(( $(now_ms) - $(date -r "$1" +%s%N) / 1000000 )); }
 
@@ -109,6 +122,18 @@ if [[ -f "$PID" ]] && kill -0 "$(cat "$PID")" 2>/dev/null; then
   rm -f "$PID"
   touch "$STOPPED"
   lang="$(cat "$LANGF" 2>/dev/null || true)"; rm -f "$LANGF"
+  if [[ -f "$STREAM" ]] && kill -0 "$(cat "$STREAM")" 2>/dev/null; then
+    # Pause mode: the streamer transcribes the last chunk, pastes it,
+    # restores the clipboard, and exits (it also notices pw-record is gone).
+    spid="$(cat "$STREAM")"
+    notify "⏹️ Stopped — finishing the last sentence…"
+    kill -USR1 "$spid" 2>/dev/null || true
+    for _ in $(seq 600); do kill -0 "$spid" 2>/dev/null || break; sleep 0.05; done
+    rm -f "$STREAM" "$WAV"
+    notify "✅ Done"
+    exit 0
+  fi
+  rm -f "$STREAM"
   notify "⏳ Transcribing…"
   t0=$(now_ms)
   text="$(run_transcription 2>>"$RUN/error.log")" || {
@@ -132,5 +157,12 @@ else
   # whole recording and the stop call would be ignored).
   pw-record --rate 16000 --channels 1 --format s16 "$WAV" </dev/null >/dev/null 2>&1 9>&- &
   echo $! > "$PID"
-  notify "🎙️ Listening${LANG_ARG:+ [$LANG_ARG]}… (same shortcut to stop)"
+  pause="${DICTATE_PAUSE:-0}"
+  if [[ "$pause" =~ ^[0-9]*\.?[0-9]+$ && ! "$pause" =~ ^[0.]+$ \
+        && ( "${XDG_SESSION_TYPE:-x11}" != wayland || -n "${DICTATE_DRYRUN:-}" ) ]]; then
+    "$DIR/.venv/bin/python" "$DIR/streamer.py" "$WAV" "$(cat "$PID")" "$LANG_ARG" \
+      </dev/null 2>>"$RUN/error.log" 9>&- &
+    echo $! > "$STREAM"
+  fi
+  notify "🔴 Recording${LANG_ARG:+ [$LANG_ARG]}… (same shortcut to stop)" 0
 fi

@@ -42,13 +42,16 @@ def pick_language(model: WhisperModel, audio, setting: str) -> str | None:
     return max(langs, key=lambda l: scores.get(l, 0.0))
 
 
-def transcribe(model: WhisperModel, path: str, lang: str | None = None) -> str:
-    """lang (e.g. "en"), when given, wins over DICTATE_LANG."""
+def transcribe(model: WhisperModel, path: str, lang: str | None = None,
+               prompt: str | None = None) -> str:
+    """lang (e.g. "en"), when given, wins over DICTATE_LANG. prompt: the text
+    that precedes this audio, so a chunk continues its style and punctuation."""
     audio = decode_audio(path, sampling_rate=16000)
     lang = pick_language(model, audio, lang or os.environ.get("DICTATE_LANG", "auto"))
     segments, _ = model.transcribe(
         audio,
         language=lang,
+        initial_prompt=prompt or None,
         # Drop silence before transcribing: without it, Whisper
         # "hallucinates" subtitles ("Sous-titrage ST' 501").
         vad_filter=True,
