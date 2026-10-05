@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/vdebes/endophasie/actions/workflows/ci.yml/badge.svg)](https://github.com/vdebes/endophasie/actions/workflows/ci.yml)
 [![Coverage](https://raw.githubusercontent.com/vdebes/endophasie/python-coverage-comment-action-data/badge.svg)](https://github.com/vdebes/endophasie/tree/python-coverage-comment-action-data)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=vdebes_endophasie&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=vdebes_endophasie)
 
 **100% local voice dictation for Linux. Whisper runs on your own GPU — your voice never leaves your machine.**
 
