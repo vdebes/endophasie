@@ -14,10 +14,9 @@ import signal
 import socket
 import sys
 
+from client import SOCK
 from transcribe import load_model, transcribe
 
-RUN = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "dictate")
-SOCK = os.path.join(RUN, "server.sock")
 IDLE_S = int(os.environ.get("DICTATE_IDLE_S", "600"))
 
 

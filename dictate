@@ -12,7 +12,7 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
-RUN="${XDG_RUNTIME_DIR:-/tmp}/dictate"   # tmpfs: audio never touches the disk
+RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/dictate"   # tmpfs: audio never touches the disk
 PID="$RUN/rec.pid"
 STOPPED="$RUN/last-stop"   # timestamp of the last stop (debounce)
 WAV="$RUN/rec.wav"

@@ -10,7 +10,10 @@ import socket
 import sys
 import time
 
-SOCK = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "dictate", "server.sock")
+# Per-user runtime directory (tmpfs, mode 700): never a shared /tmp, where
+# another user could create the folder first and intercept the socket.
+RUN = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}", "dictate")
+SOCK = os.path.join(RUN, "server.sock")
 
 
 def request(path: str, lang: str = "", prompt: str = "") -> str:

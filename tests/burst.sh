@@ -6,7 +6,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 export DICTATE_DRYRUN=1
-RUN="${XDG_RUNTIME_DIR:-/tmp}/dictate"
+RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/dictate"
 
 count_py() { pgrep -fc '\.venv/bin/python .*(transcribe|client)\.py' || true; }
 count_streamers() { pgrep -fc '\.venv/bin/python .*streamer\.py' || true; }

@@ -37,10 +37,9 @@ from typing import BinaryIO
 import numpy as np
 from faster_whisper.vad import VadOptions, get_speech_timestamps
 
-from client import request
+from client import RUN, request
 
 SR = 16000
-RUN = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "dictate")
 CHUNK_WAV = os.path.join(RUN, "chunk.wav")
 REC_PID = os.path.join(RUN, "rec.pid")
 NOTIF = os.path.join(RUN, "notify.id")
