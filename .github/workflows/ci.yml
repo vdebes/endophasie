@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          fetch-depth: 0   # full history: SonarQube needs blame to spot new code
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
       # No GPU on CI runners: skip the 2.6 GB of CUDA wheels. --no-build:
       # wheels only, no setup script of a dependency ever runs.
@@ -25,7 +27,13 @@ jobs:
       - name: Shell scripts (shellcheck)
         run: uv run --no-sync --no-build shellcheck dictate install.sh scripts/*.sh tests/*.sh
       - name: Unit tests (pytest)
-        run: uv run --no-sync --no-build pytest --cov --cov-report=term-missing
+        run: uv run --no-sync --no-build pytest --cov --cov-report=term-missing --cov-report=xml
+      # Code quality and coverage, sent to SonarQube Cloud (needs the
+      # SONAR_TOKEN secret; automatic analysis must be off in SonarQube).
+      - name: SonarQube Cloud
+        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9  # v8.3.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       # Badge and PR comment generated from .coverage, without any external
       # service: the badge lives on the python-coverage-comment-action-data branch.
       - name: Coverage badge
