@@ -13,21 +13,22 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
-      # No GPU on CI runners: skip the 2.6 GB of CUDA wheels.
-      - run: uv sync --locked --no-group gpu
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
+      # No GPU on CI runners: skip the 2.6 GB of CUDA wheels. --no-build:
+      # wheels only, no setup script of a dependency ever runs.
+      - run: uv sync --locked --no-build --no-group gpu
       - name: Lint (ruff)
-        run: uv run --no-sync ruff check .
+        run: uv run --no-sync --no-build ruff check .
       - name: Types (mypy)
-        run: uv run --no-sync mypy
+        run: uv run --no-sync --no-build mypy
       - name: Shell scripts (shellcheck)
-        run: uv run --no-sync shellcheck dictate install.sh scripts/*.sh tests/*.sh
+        run: uv run --no-sync --no-build shellcheck dictate install.sh scripts/*.sh tests/*.sh
       - name: Unit tests (pytest)
-        run: uv run --no-sync pytest --cov --cov-report=term-missing
+        run: uv run --no-sync --no-build pytest --cov --cov-report=term-missing
       # Badge and PR comment generated from .coverage, without any external
       # service: the badge lives on the python-coverage-comment-action-data branch.
       - name: Coverage badge
-        uses: py-cov-action/python-coverage-comment-action@v3
+        uses: py-cov-action/python-coverage-comment-action@b3d7e98bf5528b07d6951ef7a93e2b156f960112  # v3.1.0
         with:
           GITHUB_TOKEN: ${{ github.token }}

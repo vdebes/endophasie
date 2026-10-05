@@ -65,7 +65,7 @@ fi
 step "Python environment (.venv/; with CUDA, ~2.6 GB the first time)"
 # --no-dev: no lint/test tools. Without a GPU, no CUDA wheels (2.6 GB).
 # --inexact: keep packages already there (a developer's tools, say).
-sync_args=(--quiet --inexact --no-dev)
+sync_args=(--quiet --inexact --no-dev --no-build)   # wheels only: no setup script runs
 [[ $device == cuda ]] || sync_args+=(--no-group gpu)
 (cd "$DIR" && uv sync "${sync_args[@]}")
 ok ".venv/ ready"
@@ -95,7 +95,7 @@ model="$(set -a; . "$CONF"; echo "${DICTATE_MODEL:-}")"
 [[ -n "$model" ]] || { [[ $device == cuda ]] && model=large-v3-turbo || model=small; }
 # dictate forces HF_HUB_OFFLINE=1: without this step the first dictation
 # would fail instead of downloading the model.
-(cd "$DIR" && uv run --no-sync --quiet python -c \
+(cd "$DIR" && uv run --no-sync --no-build --quiet python -c \
   "import sys; from faster_whisper import download_model; download_model(sys.argv[1])" "$model")
 ok "$model in ~/.cache/huggingface/"
 
